@@ -62,8 +62,8 @@ class GameState:
 
 # --- Init ---
 pygame.init()
-screen = pygame.display.set_mode((1920, 1080))
-screen_height = 1080
+screen = pygame.display.set_mode((1920, 1200))
+screen_height = 1200
 screen_width = 1920
 clock = pygame.time.Clock()
 
@@ -767,4 +767,5 @@ async def main():
     pygame.quit()
 
 # Run the game
+
 asyncio.run(main())
