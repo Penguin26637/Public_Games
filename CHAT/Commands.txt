@@ -1,9 +1,2 @@
 chmod +x run_chat.sh
 ./run_chat.sh
-
-
-# run this 
-git rm --cached chat_data.json
-echo "chat_data.json" >> .gitignore
-git add .gitignore
-git commit -m "Stop tracking private chat data"

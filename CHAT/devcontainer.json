@@ -1,7 +1,7 @@
 {
-  "forwardPorts": [4000],
+  "forwardPorts": [5000],
   "portsAttributes": {
-    "4000": {
+    "5000": {
       "label": "Chat Server",
       "onAutoForward": "notify",
       "visibility": "public" 
