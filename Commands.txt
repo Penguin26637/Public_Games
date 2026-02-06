@@ -1,0 +1,2 @@
+chmod +x run_chat.sh
+./run_chat.sh
