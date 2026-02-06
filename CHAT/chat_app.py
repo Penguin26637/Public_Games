@@ -1,9 +1,15 @@
-import json, os, requests
-from flask import Flask, request, render_template_string, jsonify
+import json, os, requests, uuid
+from flask import Flask, request, render_template_string, jsonify, send_from_directory
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 CORS(app)
+
+# Configuration for File Uploads
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 DATA_FILE = 'chat_data.json'
 
 def load_d():
@@ -21,7 +27,7 @@ db = load_d()
 HTML = '''
 <!DOCTYPE html>
 <html>
-<head><title>Chat</title>
+<head><title>Pro Chat</title>
 <style>
     body { font-family: sans-serif; background: #222; color: #fff; margin: 0; display: flex; height: 100vh; }
     #side { width: 250px; background: #111; padding: 15px; border-right: 1px solid #444; overflow-y: auto; }
@@ -29,12 +35,15 @@ HTML = '''
     #box { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; }
     .t { padding: 10px; margin-bottom: 5px; background: #333; cursor: pointer; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; position: relative; }
     .active { background: #0078d4; }
-    .g-tab { border-left: 5px solid #28a745; }
-    .dot { width: 10px; height: 10px; background: #00bfff; border-radius: 50%; position: absolute; left: -5px; box-shadow: 0 0 8px #00bfff; }
+    .dot { width: 10px; height: 10px; background: #00bfff; border-radius: 50%; position: absolute; left: -5px; top: 50%; box-shadow: 0 0 8px #00bfff; }
     .m { padding: 8px; margin-bottom: 5px; background: #444; border-radius: 5px; max-width: 85%; align-self: flex-start; }
-    .in { padding: 15px; background: #111; display: flex; gap: 5px; border-top: 1px solid #444; }
+    .m img { max-width: 100%; border-radius: 5px; margin-top: 5px; }
+    .in { padding: 15px; background: #111; display: flex; gap: 5px; border-top: 1px solid #444; align-items: center; }
     input, button { padding: 8px; border-radius: 4px; border: none; background: #333; color: #fff; }
-    .btn-s { font-size: 10px; background: #555; padding: 2px 5px; cursor: pointer; border-radius: 3px; }
+    .btn-s { font-size: 10px; background: #555; padding: 2px 5px; cursor: pointer; }
+    #search-results { background: #333; border-radius: 4px; margin-top: 5px; max-height: 100px; overflow-y: auto; }
+    .search-item { padding: 5px; cursor: pointer; border-bottom: 1px solid #444; font-size: 12px; }
+    .search-item:hover { background: #0078d4; }
 </style>
 </head>
 <body>
@@ -42,6 +51,13 @@ HTML = '''
         <h3>New Group</h3>
         <input id="gn" type="text" placeholder="Group Name" style="width:90%">
         <button onclick="createG()" style="width:100%; margin:5px 0; background:#28a745">Create Group</button>
+        <hr style="border:0; border-top:1px solid #444; margin:15px 0;">
+        <div id="gm-mgr" style="display:none; background:#222; padding:8px; border-radius:4px;">
+            <b>Add Member (Search):</b>
+            <input id="ga" type="text" placeholder="Search nickname..." oninput="searchUsers()" style="width:90%; font-size:11px; margin-top:5px;">
+            <div id="search-results"></div>
+            <p style="font-size:10px; color:#888; margin-top:5px;">Members: <span id="gm-list"></span></p>
+        </div>
         <hr style="border:0; border-top:1px solid #444; margin:15px 0;">
         <h3>Friends</h3>
         <input id="fu" type="text" placeholder="Friend Port URL" style="width:90%"><br>
@@ -54,6 +70,8 @@ HTML = '''
         <div class="in">
             <input id="un" type="text" placeholder="Me" style="width:60px">
             <input id="mi" type="text" placeholder="Message..." style="flex-grow:1" onkeypress="if(event.key==='Enter') send()">
+            <input type="file" id="file-input" style="display:none" onchange="uploadFile()">
+            <button onclick="document.getElementById('file-input').click()" style="background:#555">📎</button>
             <button onclick="send()" style="background:#0078d4">Send</button>
         </div>
     </div>
@@ -64,7 +82,6 @@ HTML = '''
     async function addF() {
         const u = document.getElementById('fu').value.trim().replace(/\/$/, "");
         const n = document.getElementById('fn').value.trim() || "Friend";
-        if(!u.includes('app.github.dev')) return alert("Invalid URL!");
         await fetch('/add_f', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({u, n})});
         location.reload();
     }
@@ -75,9 +92,48 @@ HTML = '''
         location.reload();
     }
 
-    async function addMember(gid) {
-        const val = prompt("Enter Friend Name or URL to add to group:");
-        if(val) await fetch('/add_gm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({g_id:gid, val})});
+    async function searchUsers() {
+        const query = document.getElementById('ga').value.toLowerCase();
+        const res = await fetch('/get_all');
+        const data = await res.json();
+        const resultsDiv = document.getElementById('search-results');
+        resultsDiv.innerHTML = "";
+        
+        if(!query) return;
+
+        Object.entries(data.c).forEach(([url, friend]) => {
+            if(friend.n.toLowerCase().includes(query)) {
+                const div = document.createElement('div');
+                div.className = 'search-item';
+                div.innerText = friend.n;
+                div.onclick = () => addGM(friend.n);
+                resultsDiv.appendChild(div);
+            }
+        });
+    }
+
+    async function addGM(val) {
+        if(val) await fetch('/add_gm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({g_id:cur, val})});
+        document.getElementById('ga').value = "";
+        document.getElementById('search-results').innerHTML = "";
+        sel(cur, true);
+    }
+
+    async function uploadFile() {
+        const fileInput = document.getElementById('file-input');
+        if (!fileInput.files[0]) return;
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        
+        const res = await fetch('/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        
+        if (data.url) {
+            const msg = data.is_img ? `[IMG]:\${data.url}` : `[FILE]:\${data.url}`;
+            document.getElementById('mi').value = msg;
+            send();
+        }
     }
 
     async function load() {
@@ -86,15 +142,15 @@ HTML = '''
         let html = "<b>Groups</b>";
         Object.entries(data.groups).forEach(([id, g]) => {
             const dot = (unread.includes(id) && cur !== id) ? '<div class="dot"></div>' : '';
-            html += `<div class="t g-tab ${cur===id?'active':''}" onclick="sel('${id}', true)">
-                ${dot}<span>${g.name}</span><button class="btn-s" onclick="event.stopPropagation(); addMember('${id}')">+</button>
+            html += `<div class="t g-tab \${cur===id?'active':''}" onclick="sel('\${id}', true)">
+                \${dot}<span>\${g.name}</span>
             </div>`;
         });
         html += "<br><b>Friends</b>";
         Object.entries(data.c).forEach(([u, d]) => {
             const dot = (unread.includes(u) && cur !== u) ? '<div class="dot"></div>' : '';
-            html += `<div class="t ${cur===u?'active':''}" onclick="sel('${u}', false)">
-                ${dot}<span>${d.n}</span><button class="btn-s" onclick="event.stopPropagation(); ren('${u}')">Edit</button>
+            html += `<div class="t \${cur===u?'active':''}" onclick="sel('\${u}', false)">
+                \${dot}<span>\${d.n}</span><button class="btn-s" onclick="event.stopPropagation(); ren('\${u}')">Edit</button>
             </div>`;
         });
         document.getElementById('list').innerHTML = html;
@@ -109,6 +165,8 @@ HTML = '''
         cur = u; isG = g;
         unread = unread.filter(i => i !== u);
         localStorage.setItem('unread', JSON.stringify(unread));
+        document.getElementById('gm-mgr').style.display = g ? 'block' : 'none';
+        if(g) fetch(\`/get_g_info?id=\${u}\`).then(r=>r.json()).then(d=>{ document.getElementById('gm-list').innerText=d.members.join(', '); });
         load(); update(); 
     }
 
@@ -124,33 +182,24 @@ HTML = '''
         update();
     }
 
+    function formatMsg(m) {
+        if (m.t.startsWith('[IMG]:')) {
+            const url = m.t.split('[IMG]:')[1];
+            return \`<b>\${m.u}:</b><br><img src="\${url}" onclick="window.open('\${url}')">\`;
+        } else if (m.t.startsWith('[FILE]:')) {
+            const url = m.t.split('[FILE]:')[1];
+            const name = url.split('/').pop();
+            return \`<b>\${m.u}:</b> <a href="\${url}" target="_blank" style="color:#00bfff">Download \${name}</a>\`;
+        }
+        return \`<b>\${m.u}:</b> \${m.t}\`;
+    }
+
     async function update() {
-        const resF = await fetch('/get_all');
-        const data = await resF.json();
-        
-        let changed = false;
-        // Check for new Individual messages
-        Object.keys(data.c).forEach(u => {
-            const count = data.c[u].m.length;
-            const last = localStorage.getItem('lc_'+u) || 0;
-            if (count > last) { if (u !== cur && !unread.includes(u)) { unread.push(u); changed = true; } }
-            localStorage.setItem('lc_'+u, count);
-        });
-        // Check for new Group messages
-        Object.keys(data.groups).forEach(id => {
-            const count = data.groups[id].msgs.length;
-            const last = localStorage.getItem('lc_'+id) || 0;
-            if (count > last) { if (id !== cur && !unread.includes(id)) { unread.push(id); changed = true; } }
-            localStorage.setItem('lc_'+id, count);
-        });
-
-        if (changed) { localStorage.setItem('unread', JSON.stringify(unread)); load(); }
         if(!cur) return;
-
-        const resM = await fetch(isG ? `/get_g_msgs?id=${cur}` : `/get_m?f=${encodeURIComponent(cur)}`);
+        const resM = await fetch(isG ? \`/get_g_msgs?id=\${cur}\` : \`/get_m?f=\${encodeURIComponent(cur)}\`);
         const ms = await resM.json();
         const b = document.getElementById('box');
-        b.innerHTML = ms.map(m => `<div class="m"><b>${m.u}:</b> ${m.t}</div>`).join('');
+        b.innerHTML = ms.map(m => \`<div class="m">\${formatMsg(m)}</div>\`).join('');
         b.scrollTop = b.scrollHeight;
     }
     load(); setInterval(update, 2500);
@@ -160,6 +209,25 @@ HTML = '''
 
 @app.route('/')
 def home(): return render_template_string(HTML)
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+@app.route('/upload', methods=['POST'])
+def upload():
+    if 'file' not in request.files: return jsonify({"e": "No file"})
+    file = request.files['file']
+    if file.filename == '': return jsonify({"e": "No filename"})
+    
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    filename = secure_filename(f"{uuid.uuid4()}.{ext}")
+    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    
+    my_u = f"https://{os.getenv('CODESPACE_NAME')}-4000.app.github.dev"
+    file_url = f"{my_u}/uploads/{filename}"
+    is_img = ext in ['jpg', 'jpeg', 'png', 'gif']
+    return jsonify({"url": file_url, "is_img": is_img})
 
 @app.route('/add_f', methods=['POST'])
 def add_f():
@@ -181,6 +249,9 @@ def add_gm():
 
 @app.route('/get_all')
 def get_all(): return jsonify(db)
+
+@app.route('/get_g_info')
+def get_g_info(): return jsonify(db['groups'].get(request.args.get('id')))
 
 @app.route('/get_g_msgs')
 def get_g_msgs(): return jsonify(db['groups'].get(request.args.get('id'), {}).get('msgs', []))
