@@ -1,0 +1,26 @@
+Instructions for Friends
+Launch the App:
+Open my GitHub repository link.
+Click the green <> Code button, select the Codespaces tab, and click Create codespace on main.
+Run the Script:
+Once the VS Code window opens, find the terminal at the bottom.
+Type the following and press Enter:
+bash
+chmod +x run_chat.sh && ./run_chat.sh
+Use code with caution.
+
+Make it Public (Critical Step):
+Go to the Ports tab next to the Terminal.
+Right-click on Port 4000, select Port Visibility, and set it to Public.
+Note: If it stays "Private," only you can see it. Setting it to "Public" allows us to message each other.
+Exchange Links:
+In the Ports tab, find the Forwarded Address for port 4000. It looks like https://...-4000.app.github.dev.
+Copy that link and send it to me!
+Start Chatting:
+Open your own link in your browser.
+Paste my link into your "+ Add Chat" box on the sidebar and give it a nickname.
+Click my name to start messaging! 
+GitHub Docs
+GitHub Docs
+ +5
+Updated chat_app.py Features
