@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google Gnome: Garden Master</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Arial', sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #1B5E20; text-shadow: 1px 1px 1px white; pointer-events: none; }
+        #restart-screen { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; padding: 25px; border-radius: 15px; display: none; text-align: center; border: 4px solid #4CAF50;
+        }
+        button { padding: 10px 20px; font-size: 18px; cursor: pointer; background: #E91E63; border: none; color: white; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h1>Distance: <span id="dist">0</span>m | Flowers: <span id="score">0</span></h1>
+        <p><b>SPACE:</b> Start Swing → Launch → Slam in Air</p>
+    </div>
+    <div id="restart-screen">
+        <h2 id="final">Game Over!</h2>
+        <button onclick="location.reload()">Reset Garden</button>
+    </div>
+    <canvas id="game"></canvas>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        const distEl = document.getElementById('dist'), scoreEl = document.getElementById('score');
+
+        // GAME SETTINGS & PHYSICS
+        let worldX = 0, score = 0, gameState = 'IDLE', angle = -Math.PI, swingSpeed = 0.055;
+        const gnome = { x: 180, y: 0, vx: 0, vy: 0, radius: 12 };
+        const pivot = { x: 180, y: 0 };
+        const items = [];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            pivot.y = canvas.height - 180;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // WORLD OBJECT GENERATION
+        function spawnItem(x) {
+            const types = ['flower', 'mushroom', 'log'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            items.push({ x, type, collected: false });
+        }
+        for(let i=1; i<15; i++) spawnItem(600 + i * 350); // Initial spawn
+
+        function update() {
+            if (gameState === 'SWINGING') {
+                angle += swingSpeed;
+                if (angle > -0.5 || angle < -Math.PI - 0.5) swingSpeed = -swingSpeed;
+                gnome.x = pivot.x + Math.cos(angle) * 110;
+                gnome.y = pivot.y + Math.sin(angle) * 110;
+            } 
+            else if (gameState === 'FLIGHT') {
+                gnome.vy += 0.25; // Gravity
+                gnome.vx *= 0.997; // Air resistance
+                gnome.x += gnome.vx;
+                gnome.y += gnome.vy;
+
+                // Infinite Camera Movement
+                if (gnome.x > canvas.width / 2) {
+                    let diff = gnome.x - canvas.width / 2;
+                    worldX += diff;
+                    gnome.x -= diff;
+                    if (Math.random() < 0.03) spawnItem(worldX + canvas.width + 200);
+                }
+
+                // COLLISION DETECTION (Mushrooms, Logs, Flowers)
+                items.forEach(item => {
+                    let screenX = item.x - worldX;
+                    if (!item.collected && Math.abs(gnome.x - screenX) < 40 && gnome.y > canvas.height - 130) {
+                        if (item.type === 'flower') { 
+                            score += 10; item.collected = true; 
+                        } else if (item.type === 'mushroom') { 
+                            gnome.vy = -16; // High vertical bounce
+                        } else if (item.type === 'log') { 
+                            gnome.vx += 6; // Horizontal speed boost
+                            gnome.vy = -5; // Slight pop up
+                        }
+                    }
+                });
+
+                // GROUND COLLISION
+                if (gnome.y > canvas.height - 90) {
+                    gnome.y = canvas.height - 90;
+                    gnome.vy *= -0.55; // Natural bounce
+                    gnome.vx *= 0.96; // Ground friction
+                    if (Math.abs(gnome.vx) < 0.3 && Math.abs(gnome.vy) < 1) {
+                        gameState = 'STOPPED';
+                        document.getElementById('restart-screen').style.display = 'block';
+                    }
+                }
+            }
+            distEl.innerText = Math.floor(worldX / 10);
+            scoreEl.innerText = score;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // BACKGROUND & GROUND
+            ctx.fillStyle = "#4CAF50"; 
+            ctx.fillRect(0, canvas.height - 80, canvas.width, 80);
+
+            // DRAW CATAPULT (Only if at start)
+            if (worldX < 500) {
+                ctx.fillStyle = "#795548";
+                ctx.fillRect(pivot.x - 12 - worldX, pivot.y, 24, canvas.height - pivot.y - 80);
+                if (gameState === 'IDLE' || gameState === 'SWINGING') {
+                    ctx.strokeStyle = "#5D4037"; ctx.lineWidth = 6;
+                    ctx.beginPath(); ctx.moveTo(pivot.x - worldX, pivot.y);
+                    ctx.lineTo(gnome.x, gnome.y); ctx.stroke();
+                }
+            }
+
+            // DRAW OBJECTS (Flowers, Mushrooms, Logs)
+            items.forEach(item => {
+                let sx = item.x - worldX;
+                if (sx < -50 || sx > canvas.width + 50) return;
+                if (item.type === 'flower') {
+                    if (!item.collected) {
+                        ctx.fillStyle = '#FFEB3B'; ctx.beginPath(); 
+                        ctx.arc(sx, canvas.height-100, 8, 0, Math.PI*2); ctx.fill();
+                    }
+                } else if (item.type === 'mushroom') {
+                    ctx.fillStyle = '#F44336'; ctx.beginPath(); 
+                    ctx.arc(sx, canvas.height-90, 18, Math.PI, 0); ctx.fill(); // Dome
+                } else if (item.type === 'log') {
+                    ctx.fillStyle = '#5D4037'; ctx.fillRect(sx-25, canvas.height-95, 50, 18);
+                }
+            });
+
+            // DRAW GNOME
+            ctx.save(); ctx.translate(gnome.x, gnome.y);
+            if(gameState === 'FLIGHT') ctx.rotate(worldX * 0.08);
+            ctx.fillStyle = "#EA4335"; ctx.beginPath(); ctx.moveTo(-12,0); ctx.lineTo(0,-32); ctx.lineTo(12,0); ctx.fill();
+            ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(0, 10, 10, 0, Math.PI); ctx.fill();
+            ctx.restore();
+
+            update();
+            requestAnimationFrame(draw);
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                if (gameState === 'IDLE') gameState = 'SWINGING';
+                else if (gameState === 'SWINGING') {
+                    gameState = 'FLIGHT';
+                    let launchAngle = angle + (swingSpeed > 0 ? 1.57 : -1.57); // Tangential release
+                    gnome.vx = Math.cos(launchAngle) * 28;
+                    gnome.vy = Math.sin(launchAngle) * 28;
+                } else if (gameState === 'FLIGHT') {
+                    gnome.vy += 12; // Slam Mechanic
+                }
+            }
+        });
+        draw();
+    </script>
+</body>
+</html>
