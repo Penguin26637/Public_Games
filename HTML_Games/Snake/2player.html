@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pro Snake: Duel Edition</title>
+    <style>
+        body { background: #1a1a1a; color: white; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
+        .main-ui { background: #333; padding: 15px; border-radius: 10px; border: 1px solid #444; margin-bottom: 20px; text-align: center; }
+        .game-wrapper { display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; }
+        .screen-container { display: flex; flex-direction: column; align-items: center; background: #252525; padding: 10px; border-radius: 8px; }
+        canvas { border: 4px solid #555; background: #000; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
+        .controls-hint { color: #888; font-size: 12px; margin-top: 8px; }
+        .hidden { display: none !important; }
+        select, button { padding: 6px; background: #444; color: white; border: 1px solid #666; border-radius: 4px; cursor: pointer; margin: 3px; }
+        #startAI { background: #4CAF50; font-weight: bold; border-color: #fff; }
+        h3 { margin: 5px 0; color: #4CAF50; }
+        .local-ui { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; flex-wrap: wrap; justify-content: center; }
+    </style>
+</head>
+<body>
+    <div class="main-ui">
+        <button id="toggleMP" onclick="toggleMultiplayer()">Toggle Multiplayer: OFF</button>
+        <button id="toggleAI" class="hidden" onclick="toggleAI()">Mode: Player vs Player</button>
+        <button onclick="resetAll()">Global Restart</button>
+    </div>
+
+    <div class="game-wrapper">
+        <!-- PLAYER 1 -->
+        <div id="p1-container" class="screen-container">
+            <h3>Player 1 (WASD)</h3>
+            <div class="local-ui">
+                <select class="fieldSize"><option value="300">Small</option><option value="400" selected>Medium</option><option value="600">Big</option></select>
+                <select class="appleCount"></select> <!-- Populated by JS -->
+                <select class="gameSpeed"><option value="150">Slow</option><option value="100" selected>Normal</option><option value="60">Fast</option><option value="30">Insane</option></select>
+                <span>Score: <span class="score">0</span></span>
+            </div>
+            <canvas class="snakeGame"></canvas>
+            <div class="status-text controls-hint">WASD to Move • Space to Pause</div>
+        </div>
+
+        <!-- PLAYER 2 / AI -->
+        <div id="p2-container" class="screen-container hidden">
+            <h3 id="p2-title">Player 2 (Arrows)</h3>
+            <div class="local-ui">
+                <select class="fieldSize"><option value="300">Small</option><option value="400" selected>Medium</option><option value="600">Big</option></select>
+                <select class="appleCount"></select>
+                <select class="gameSpeed"><option value="150">Slow</option><option value="100" selected>Normal</option><option value="60">Fast</option><option value="30">Insane</option></select>
+                <button id="startAI" class="hidden" onclick="startOnlyAI()">Start AI</button>
+                <span>Score: <span class="score">0</span></span>
+            </div>
+            <canvas class="snakeGame"></canvas>
+            <div id="p2-hint" class="status-text controls-hint">Arrows to Move</div>
+        </div>
+    </div>
+
+<script>
+const box = 20;
+let isMultiplayer = false;
+let isAI = false;
+let isPaused = false;
+
+class SnakeInstance {
+    constructor(containerId, controlsType) {
+        this.container = document.getElementById(containerId);
+        this.canvas = this.container.querySelector('.snakeGame');
+        this.ctx = this.canvas.getContext('2d');
+        this.scoreDisplay = this.container.querySelector('.score');
+        this.controlsType = controlsType; 
+        this.score = 0;
+        this.snake = [];
+        this.apples = [];
+        this.direction = null;
+        this.inputQueue = [];
+        this.gameLoop = null;
+
+        // Populate 1-10 apples
+        const appleSel = this.container.querySelector('.appleCount');
+        for(let i=1; i<=10; i++) {
+            let opt = document.createElement('option');
+            opt.value = i; opt.innerText = i + (i === 1 ? " Apple" : " Apples");
+            if(i === 3) opt.selected = true;
+            appleSel.appendChild(opt);
+        }
+
+        this.container.querySelector('.fieldSize').addEventListener('change', () => this.init());
+        this.container.querySelector('.appleCount').addEventListener('change', () => this.init());
+        this.container.querySelector('.gameSpeed').addEventListener('change', () => this.init());
+    }
+
+    init() {
+        clearInterval(this.gameLoop);
+        const size = parseInt(this.container.querySelector('.fieldSize').value);
+        const speed = parseInt(this.container.querySelector('.gameSpeed').value);
+        
+        this.canvas.width = size;
+        this.canvas.height = size;
+        this.score = 0;
+        this.scoreDisplay.innerText = "0";
+        this.direction = null;
+        this.inputQueue = [];
+        this.apples = [];
+        
+        const startX = Math.floor(this.canvas.width / (2 * box)) * box;
+        const startY = Math.floor(this.canvas.height / (2 * box)) * box;
+        this.snake = [{x: startX, y: startY}, {x: startX, y: startY + box}];
+        
+        const count = parseInt(this.container.querySelector('.appleCount').value);
+        for(let i=0; i<count; i++) this.spawnFood();
+        this.gameLoop = setInterval(() => this.tick(), speed);
+    }
+
+    spawnFood() {
+        const cols = this.canvas.width / box;
+        const rows = this.canvas.height / box;
+        let newFood, collision;
+        do {
+            collision = false;
+            newFood = { x: Math.floor(Math.random() * cols) * box, y: Math.floor(Math.random() * rows) * box };
+            if (this.snake.some(p => p.x === newFood.x && p.y === newFood.y)) collision = true;
+            if (this.apples.some(a => a.x === newFood.x && a.y === newFood.y)) collision = true;
+        } while (collision);
+        this.apples.push(newFood);
+    }
+
+    tick() {
+        if (isPaused) { this.draw(); return; }
+        if (this.controlsType === 'ai' && this.direction) this.calculateAIMove();
+        if (this.inputQueue.length > 0) this.direction = this.inputQueue.shift();
+        if (!this.direction) { this.draw(); return; }
+
+        let headX = this.snake[0].x;
+        let headY = this.snake[0].y;
+        if (this.direction === "LEFT") headX -= box;
+        if (this.direction === "UP") headY -= box;
+        if (this.direction === "RIGHT") headX += box;
+        if (this.direction === "DOWN") headY += box;
+
+        if (headX < 0 || headX >= this.canvas.width || headY < 0 || headY >= this.canvas.height || this.snake.some(p => p.x === headX && p.y === headY)) {
+            this.init();
+            return;
+        }
+
+        const appleIdx = this.apples.findIndex(a => a.x === headX && a.y === headY);
+        if (appleIdx !== -1) {
+            this.score++;
+            this.scoreDisplay.innerText = this.score;
+            this.apples.splice(appleIdx, 1);
+            this.spawnFood();
+        } else {
+            this.snake.pop();
+        }
+        this.snake.unshift({x: headX, y: headY});
+        this.draw();
+    }
+
+    calculateAIMove() {
+        const head = this.snake[0];
+        const target = this.apples[0];
+        if (target.x < head.x && this.direction !== "RIGHT") this.inputQueue = ["LEFT"];
+        else if (target.x > head.x && this.direction !== "LEFT") this.inputQueue = ["RIGHT"];
+        else if (target.y < head.y && this.direction !== "DOWN") this.inputQueue = ["UP"];
+        else if (target.y > head.y && this.direction !== "UP") this.inputQueue = ["DOWN"];
+    }
+
+    draw() {
+        this.ctx.fillStyle = "black";
+        this.ctx.fillRect(0,0,this.canvas.width, this.canvas.height);
+        this.apples.forEach(a => {
+            this.ctx.fillStyle = "#FF5252";
+            this.ctx.fillRect(a.x+2, a.y+2, box-4, box-4);
+        });
+        this.snake.forEach((p, i) => {
+            this.ctx.fillStyle = i === 0 ? "#4CAF50" : "#2E7D32";
+            this.ctx.fillRect(p.x, p.y, box-1, box-1);
+        });
+        if (isPaused) {
+            this.ctx.fillStyle = "white";
+            this.ctx.font = "20px Arial";
+            this.ctx.fillText("PAUSED", 10, 30);
+        }
+    }
+}
+
+const p1 = new SnakeInstance('p1-container', 'wasd');
+const p2 = new SnakeInstance('p2-container', 'arrows');
+
+function startOnlyAI() { if (isAI) p2.direction = "UP"; }
+
+function toggleMultiplayer() {
+    isMultiplayer = !isMultiplayer;
+    document.getElementById('p2-container').classList.toggle('hidden');
+    document.getElementById('toggleAI').classList.toggle('hidden');
+    document.getElementById('toggleMP').innerText = `Multiplayer: ${isMultiplayer ? 'ON' : 'OFF'}`;
+    if (!isMultiplayer) document.getElementById('startAI').classList.add('hidden');
+    resetAll();
+}
+
+function toggleAI() {
+    isAI = !isAI;
+    p2.controlsType = isAI ? 'ai' : 'arrows';
+    document.getElementById('p2-title').innerText = isAI ? "AI Opponent" : "Player 2 (Arrows)";
+    document.getElementById('p2-hint').innerText = isAI ? "AI logic active" : "Arrows to Move";
+    document.getElementById('toggleAI').innerText = `Mode: ${isAI ? 'Player vs AI' : 'Player vs Player'}`;
+    const startAIBtn = document.getElementById('startAI');
+    if (isAI) startAIBtn.classList.remove('hidden');
+    else startAIBtn.classList.add('hidden');
+    resetAll();
+}
+
+function resetAll() { p1.init(); p2.init(); }
+
+document.addEventListener('keydown', e => {
+    if (e.code === "Space") { isPaused = !isPaused; e.preventDefault(); return; }
+    const p1Keys = {KeyW:"UP", KeyS:"DOWN", KeyA:"LEFT", KeyD:"RIGHT"};
+    const p2Keys = {ArrowUp:"UP", ArrowDown:"DOWN", ArrowLeft:"LEFT", ArrowRight:"RIGHT"};
+    if (p1Keys[e.code]) {
+        const dir = p1Keys[e.code];
+        if (dir !== getOpposite(p1.direction)) {
+            p1.inputQueue.push(dir);
+            if (isAI && !p2.direction) p2.direction = "UP";
+        }
+    }
+    if (!isAI && p2Keys[e.code]) {
+        const dir = p2Keys[e.code];
+        if (dir !== getOpposite(p2.direction)) p2.inputQueue.push(dir);
+    }
+});
+
+function getOpposite(d) {
+    const opps = {UP:"DOWN", DOWN:"UP", LEFT:"RIGHT", RIGHT:"LEFT"};
+    return opps[d];
+}
+
+resetAll();
+</script>
+</body>
+</html>

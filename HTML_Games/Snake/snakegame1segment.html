@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Snake Pro - Fixed Input</title>
+    <style>
+        body { background: #1a1a1a; color: white; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin-top: 20px; }
+        .ui { margin-bottom: 15px; text-align: center; background: #333; padding: 15px; border-radius: 10px; border: 1px solid #444; }
+        .scores { font-size: 22px; color: #4CAF50; font-weight: bold; margin-bottom: 10px; }
+        canvas { border: 5px solid #555; background: #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        select, button { padding: 8px; background: #444; color: white; border: 1px solid #666; border-radius: 4px; cursor: pointer; margin: 0 5px; }
+        .controls { color: #888; font-size: 13px; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div class="scores">Score: <span id="score">0</span> | Best: <span id="highScore">0</span></div>
+        <label>Difficulty: </label>
+        <select id="mode">
+            <option value="150">Easy</option>
+            <option value="100" selected>Normal</option>
+            <option value="60">Hard</option>
+        </select>
+        <label style="margin-left:10px;">Field Size: </label>
+        <select id="fieldSize">
+            <option value="300">Small (15x15)</option>
+            <option value="400" selected>Medium (20x20)</option>
+            <option value="600">Large (30x30)</option>
+        </select>
+        <button onclick="resetGame()">Restart</button>
+    </div>
+
+    <canvas id="snakeGame"></canvas>
+    <div id="status" class="controls">USE ARROWS OR WASD TO START</div>
+
+    <script>
+        const canvas = document.getElementById("snakeGame");
+        const ctx = canvas.getContext("2d");
+        const box = 20;
+        
+        let score, highScore, snake, food, direction, nextDirection, gameLoop;
+        let inputQueue = []; // Fixes the "quick double key" death
+
+        highScore = localStorage.getItem("snakeHighScore") || 0;
+        document.getElementById("highScore").innerText = highScore;
+
+        function resetGame() {
+            clearInterval(gameLoop);
+            const size = parseInt(document.getElementById("fieldSize").value);
+            canvas.width = size;
+            canvas.height = size;
+            
+            score = 0;
+            document.getElementById("score").innerText = score;
+            document.getElementById("status").innerText = "USE ARROWS OR WASD TO START";
+            
+            direction = null; 
+            nextDirection = null;
+            inputQueue = [];
+
+            const startX = Math.floor(canvas.width / (2 * box)) * box;
+            const startY = Math.floor(canvas.height / (2 * box)) * box;
+            
+            // Start with a single head to prevent initial collision confusion
+            snake = [{ x: startX, y: startY }];
+
+            spawnFood();
+            gameLoop = setInterval(gameStep, document.getElementById("mode").value);
+        }
+
+        function spawnFood() {
+            const cols = canvas.width / box;
+            const rows = canvas.height / box;
+            food = {
+                x: Math.floor(Math.random() * cols) * box,
+                y: Math.floor(Math.random() * rows) * box
+            };
+            if (snake.some(part => part.x === food.x && part.y === food.y)) spawnFood();
+        }
+
+        document.addEventListener("keydown", e => {
+            const keys = {
+                37: "LEFT", 38: "UP", 39: "RIGHT", 40: "DOWN",
+                65: "LEFT", 87: "UP", 68: "RIGHT", 83: "DOWN" // WASD Support
+            };
+            const pressed = keys[e.keyCode];
+            if (!pressed) return;
+            
+            e.preventDefault();
+            
+            // Get the last direction in the queue or the current direction
+            const lastD = inputQueue.length > 0 ? inputQueue[inputQueue.length - 1] : direction;
+
+            // Prevent reversing
+            if (pressed === "LEFT" && lastD !== "RIGHT") inputQueue.push("LEFT");
+            else if (pressed === "UP" && lastD !== "DOWN") inputQueue.push("UP");
+            else if (pressed === "RIGHT" && lastD !== "LEFT") inputQueue.push("RIGHT");
+            else if (pressed === "DOWN" && lastD !== "UP") inputQueue.push("DOWN");
+
+            document.getElementById("status").innerText = "PLAYING...";
+        });
+
+        function gameStep() {
+            // Process only ONE direction change per frame
+            if (inputQueue.length > 0) {
+                direction = inputQueue.shift();
+            }
+
+            if (!direction) {
+                draw();
+                return;
+            }
+
+            let headX = snake[0].x;
+            let headY = snake[0].y;
+
+            if (direction === "LEFT") headX -= box;
+            if (direction === "UP") headY -= box;
+            if (direction === "RIGHT") headX += box;
+            if (direction === "DOWN") headY += box;
+
+            // COLLISION: Strict border check
+            const hitWall = headX < 0 || headX >= canvas.width || headY < 0 || headY >= canvas.height;
+            const hitSelf = snake.some(part => part.x === headX && part.y === headY);
+
+            if (hitWall || hitSelf) {
+                if (score > highScore) {
+                    highScore = score;
+                    localStorage.setItem("snakeHighScore", highScore);
+                    document.getElementById("highScore").innerText = highScore;
+                }
+                alert("Game Over! Score: " + score);
+                resetGame();
+                return;
+            }
+
+            const newHead = { x: headX, y: headY };
+
+            if (headX === food.x && headY === food.y) {
+                score++;
+                document.getElementById("score").innerText = score;
+                spawnFood();
+            } else {
+                snake.pop();
+            }
+
+            snake.unshift(newHead);
+            draw();
+        }
+
+        function draw() {
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Food
+            ctx.fillStyle = "#FF5252";
+            ctx.fillRect(food.x + 2, food.y + 2, box - 4, box - 4);
+
+            // Snake
+            snake.forEach((part, i) => {
+                ctx.fillStyle = i === 0 ? "#4CAF50" : "#2E7D32";
+                ctx.fillRect(part.x, part.y, box - 1, box - 1);
+            });
+        }
+
+        document.getElementById("mode").addEventListener("change", resetGame);
+        document.getElementById("fieldSize").addEventListener("change", resetGame);
+
+        resetGame();
+    </script>
+</body>
+</html>
