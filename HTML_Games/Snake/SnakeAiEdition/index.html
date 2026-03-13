@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pro Snake: 2026 Edition</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="main-ui">
+        <div class="menu-group">
+            <label>Mode:</label>
+            <select id="gameMode" onchange="updateUI()">
+                <option value="single">Single Player</option>
+                <option value="duel" selected>Duel Mode</option>
+            </select>
+            <button onclick="goFullscreen()" id="fsBtn">Fullscreen</button>
+            <button onclick="initGame()" class="reset-btn">Global Reset</button>
+        </div>
+        <div id="ai-ui-group" class="menu-group">
+            <label>Matchup:</label>
+            <select id="matchup" onchange="updateUI()">
+                <option value="pvp">PVP</option>
+                <option value="pva" selected>Player vs AI</option>
+                <option value="ava">AI vs AI</option>
+            </select>
+            <label>Difficulty:</label>
+            <!-- Fixed ID and Values to match the Unbeatable Logic -->
+            <select id="difficulty" onchange="initGame()">
+                <option value="0.1">Medium</option>
+                <option value="0.02">Hard</option>
+                <option value="0" selected>Impossible (Unbeatable)</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="game-wrapper" id="gameWrapper">
+        <div id="p1-container" class="screen-container">
+            <h3 id="l1">Player 1 (WASD)</h3>
+            <div class="local-ui">
+                <select class="fieldSize">
+                    <option value="300">Small</option>
+                    <option value="400" selected>Medium</option>
+                    <option value="600">Big</option>
+                </select>
+                <select class="appleCount"></select> 
+                <select class="gameSpeed">
+                    <option value="200">Slow</option>
+                    <option value="100" selected>Normal</option>
+                    <option value="50">Fast</option>
+                    <option value="25">INSANE</option>
+                </select>
+                <span class="score-box">Score: <span class="score">0</span></span>
+            </div>
+            <div class="canvas-relative">
+                <canvas id="can1"></canvas>
+                <div id="death1" class="death-screen hidden">
+                    <h2>WASTED</h2>
+                    <p>Score: <span class="last-score">0</span> | High: <span class="high-score">0</span></p>
+                    <div class="retry-hint">Press Movement Key to Respawn</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="p2-container" class="screen-container">
+            <h3 id="l2">Player 2 (Arrows / AI)</h3>
+            <div class="local-ui">
+                <select class="fieldSize">
+                    <option value="300">Small</option>
+                    <option value="400" selected>Medium</option>
+                    <option value="600">Big</option>
+                </select>
+                <select class="appleCount"></select>
+                <select class="gameSpeed">
+                    <option value="200">Slow</option>
+                    <option value="100" selected>Normal</option>
+                    <option value="50">Fast</option>
+                    <option value="25">INSANE</option>
+                </select>
+                <span class="score-box">Score: <span class="score">0</span></span>
+            </div>
+            <div class="canvas-relative">
+                <canvas id="can2"></canvas>
+                <div id="death2" class="death-screen hidden">
+                    <h2>WASTED</h2>
+                    <p>Score: <span class="last-score">0</span> | High: <span class="high-score">0</span></p>
+                    <div class="retry-hint">Press Movement Key to Respawn</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
